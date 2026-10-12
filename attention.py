@@ -61,3 +61,35 @@ def apply_cross_attention(X_q, X_kv, W_q, W_k, W_v):
     K = X_kv @ W_k
     V = X_kv @ W_v
     return attention(Q, K, V, causal=False)
+
+def apply_multi_head_attention(X_q, X_kv, W_q, W_k, W_v, num_heads, W_o, causal=False):
+    """
+    Apply multi-head attention mechanism to the input data.
+
+    Args:
+        X_q: A numpy array of shape (batch_size, seq_len_q, d_model)
+        X_kv: A numpy array of shape (batch_size, seq_len_kv, d_model)
+        W_q: A numpy array of shape (d_model, d_k * num_heads)
+        W_k: A numpy array of shape (d_model, d_k * num_heads)
+        W_v: A numpy array of shape (d_model, d_v * num_heads)
+        num_heads: An integer representing the number of attention heads
+        W_o: A numpy array of shape (d_v * num_heads, d_model)
+        causal: A boolean indicating whether to apply causal masking
+    """
+    batch_size = X_q.shape[0]
+    seq_len_q = X_q.shape[1]
+    seq_len_kv = X_kv.shape[1]
+    d_k = W_q.shape[1] // num_heads
+    d_v = W_v.shape[1] // num_heads
+
+    # Reshape and transpose for multi-head attention
+    Q = (X_q @ W_q).reshape(batch_size, seq_len_q, num_heads, d_k).transpose(0, 2, 1, 3)  # (batch_size, num_heads, seq_len_q, d_k)
+    K = (X_kv @ W_k).reshape(batch_size, seq_len_kv, num_heads, d_k).transpose(0, 2, 1, 3)  # (batch_size, num_heads, seq_len_kv, d_k)
+    V = (X_kv @ W_v).reshape(batch_size, seq_len_kv, num_heads, d_v).transpose(0, 2, 1, 3)  # (batch_size, num_heads, seq_len_kv, d_v)
+
+    # Compute attention for each head
+    attention_outputs = attention(Q, K, V, causal=causal)  # (batch_size, num_heads, seq_len_q, d_v). We can use the attention function directly because it supports batch processing and multiple heads, due to the usage of the last two dimensions for the dot product and softmax.
+    # Applying the inverse transformations before product with W_o
+    attention_outputs = attention_outputs.transpose(0, 2, 1, 3).reshape(batch_size, seq_len_q, num_heads * d_v)  # (batch_size, seq_len_q, d_v * num_heads)
+
+    return attention_outputs @ W_o  # (batch_size, seq_len_q, d_model)
